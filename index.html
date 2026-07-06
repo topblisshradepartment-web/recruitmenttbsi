@@ -170,6 +170,7 @@ footer{margin-top:1.5rem;text-align:center;color:var(--muted);font-size:11px}
     <div class="header-actions">
       <button class="btn btn-outline" id="connectBtn">Connect Google Sheet</button>
       <button class="btn btn-outline" id="syncBtn" style="display:none">Sync now</button>
+      <button class="btn btn-outline" id="forgetBtn" style="display:none" title="Forget the saved connection on this device">Forget connection</button>
       <button class="btn btn-dark" id="saveToSheetBtn" style="display:none">Save changes to Sheet</button>
       <label class="btn btn-outline" for="csvInput">Upload CSV</label>
       <input type="file" id="csvInput" accept=".csv">
@@ -297,6 +298,23 @@ let STAGES = {};
 let NOTES = {};
 let TARGETS = {};
 let CONFIG = {url:'', key:''};
+
+// Remembers the Sheet connection across visits when running as a real
+// browser file (not inside Claude's sandboxed preview, where storage is blocked).
+function saveConfigToStorage(){
+  try{
+    localStorage.setItem('tbsi_dashboard_config', JSON.stringify(CONFIG));
+  }catch(e){ /* storage unavailable in this environment — session-only, that's fine */ }
+}
+function loadConfigFromStorage(){
+  try{
+    const raw = localStorage.getItem('tbsi_dashboard_config');
+    if(raw){ CONFIG = JSON.parse(raw); }
+  }catch(e){ /* storage unavailable — CONFIG stays empty, user connects manually */ }
+}
+function clearConfigFromStorage(){
+  try{ localStorage.removeItem('tbsi_dashboard_config'); }catch(e){}
+}
 let dataSource = 'none'; // 'csv' or 'sheet'
 let charts = {};
 
@@ -937,13 +955,31 @@ document.getElementById('saveConnectBtn').addEventListener('click', () => {
   CONFIG.key = document.getElementById('sheetKeyInput').value.trim();
   document.getElementById('connectModal').classList.remove('open');
   if(CONFIG.url){
+    saveConfigToStorage();
     document.getElementById('syncBtn').style.display = 'inline-flex';
+    document.getElementById('forgetBtn').style.display = 'inline-flex';
     syncFromSheet();
   }
 });
 
+document.getElementById('forgetBtn').addEventListener('click', () => {
+  if(!confirm('Forget the saved Sheet connection on this device?')) return;
+  clearConfigFromStorage();
+  CONFIG = {url:'', key:''};
+  document.getElementById('syncBtn').style.display = 'none';
+  document.getElementById('forgetBtn').style.display = 'none';
+});
+
 document.getElementById('syncBtn').addEventListener('click', syncFromSheet);
 document.getElementById('saveToSheetBtn').addEventListener('click', saveChangesToSheet);
+
+// Auto-reconnect on load if a connection was remembered on this device
+loadConfigFromStorage();
+if(CONFIG.url){
+  document.getElementById('syncBtn').style.display = 'inline-flex';
+  document.getElementById('forgetBtn').style.display = 'inline-flex';
+  syncFromSheet();
+}
 
 document.getElementById('closeProfileBtn').addEventListener('click', () => {
   document.getElementById('profileModal').classList.remove('open');
