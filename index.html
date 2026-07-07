@@ -73,6 +73,15 @@ input[type=file]{display:none}
 
 .target-section{background:#fff;border:1px solid var(--border);border-radius:12px;padding:1.1rem;margin-bottom:1.5rem}
 .target-section h3{font-size:12.5px;font-weight:700;margin-bottom:.85rem}
+
+.status-section{background:#fff;border:1px solid var(--border);border-radius:12px;padding:1.1rem;margin-bottom:1.5rem;overflow-x:auto}
+.status-section h3{font-size:12.5px;font-weight:700;margin-bottom:.85rem}
+.status-row{display:grid;grid-template-columns:1.4fr repeat(6,0.65fr) 0.65fr;gap:.5rem;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--border);font-size:12.5px;min-width:640px}
+.status-row:last-child{border-bottom:none}
+.status-row.head{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+.status-row div{text-align:center}
+.status-row div:first-child{text-align:left;font-weight:600}
+.status-row.head div:first-child{font-weight:700}
 .target-row{display:grid;grid-template-columns:1.2fr .5fr .5fr 2fr .6fr;gap:.75rem;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--border);font-size:12.5px}
 .target-row:last-child{border-bottom:none}
 .target-row.head{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
@@ -198,6 +207,10 @@ footer{margin-top:1.5rem;text-align:center;color:var(--muted);font-size:11px}
       <h3>Target vs. actual hired (within selected date range)</h3>
       <div id="targetRows"></div>
     </div>
+    <div class="status-section">
+      <h3>Pipeline status by position (within selected date range)</h3>
+      <div id="statusByPositionRows"></div>
+    </div>
     <div class="charts-row">
       <div class="chart-card">
         <h3>Applicants by position</h3>
@@ -297,6 +310,12 @@ let RAW = [];
 let STAGES = {};
 let NOTES = {};
 let TARGETS = {};
+// ==== Paste your Apps Script Web App URL and secret key here ====
+// Once filled in, EVERYONE who opens this hosted page connects automatically —
+// no one has to type the URL/key in themselves. Leave blank to require manual connect.
+const DEFAULT_SHEET_URL = '';
+const DEFAULT_SHEET_KEY = '';
+
 let CONFIG = {url:'', key:''};
 
 // Remembers the Sheet connection across visits when running as a real
@@ -502,7 +521,14 @@ async function syncFromSheet(){
   try{
     const res = await fetch(CONFIG.url + '?key=' + encodeURIComponent(CONFIG.key));
     const json = await res.json();
-    if(json.error){ alert('Connection error: ' + json.error); return; }
+    if(json.error){
+      if(json.error === 'Unauthorized'){
+        alert('Connection error: Unauthorized.\n\nThe secret key being used here doesn\'t match the SECRET_KEY currently set in your Apps Script. Click "Forget connection" then "Connect Google Sheet" again and re-enter the exact URL and key from your current deployment.');
+      }else{
+        alert('Connection error: ' + json.error);
+      }
+      return;
+    }
     ingestSheetJson(json);
   }catch(err){
     alert('Could not reach the sheet. Check the URL and confirm the deployment access is set to "Anyone". Details: ' + err.message);
@@ -661,6 +687,23 @@ function renderTargets(data){
     </div>`;
   });
   document.getElementById('targetRows').innerHTML = html;
+}
+
+function renderStatusByPosition(data){
+  const positions = [...new Set(data.map(r=>r.position))].sort();
+  const counts = {};
+  positions.forEach(p => { counts[p] = {}; STAGE_ORDER.forEach(s=>counts[p][s]=0); });
+  data.forEach(r => {
+    const s = STAGES[r.id]||'New';
+    counts[r.position][s] = (counts[r.position][s]||0) + 1;
+  });
+
+  let html = `<div class="status-row head"><div>Position</div>${STAGE_ORDER.map(s=>`<div>${s}</div>`).join('')}<div>Total</div></div>`;
+  positions.forEach(p => {
+    const total = STAGE_ORDER.reduce((sum,s)=>sum+counts[p][s],0);
+    html += `<div class="status-row"><div>${p}</div>${STAGE_ORDER.map(s=>`<div>${counts[p][s]}</div>`).join('')}<div><strong>${total}</strong></div></div>`;
+  });
+  document.getElementById('statusByPositionRows').innerHTML = html || '<div style="padding:.5rem 0;color:var(--muted);font-size:12.5px">No applicants in this range.</div>';
 }
 
 function destroyChart(key){
@@ -868,7 +911,7 @@ function renderTable(){
     sel.addEventListener('change', e => {
       STAGES[e.target.dataset.id] = e.target.value;
       const dateFiltered = getDateFiltered();
-      renderKpis(dateFiltered); renderFunnel(dateFiltered); renderTargets(dateFiltered); renderTable();
+      renderKpis(dateFiltered); renderFunnel(dateFiltered); renderTargets(dateFiltered); renderStatusByPosition(dateFiltered); renderTable();
     });
   });
   document.querySelectorAll('.notes-input').forEach(inp => {
@@ -897,6 +940,7 @@ function render(){
   renderKpis(dateFiltered);
   renderFunnel(dateFiltered);
   renderTargets(dateFiltered);
+  renderStatusByPosition(dateFiltered);
   renderCharts(dateFiltered);
   renderTable();
 }
@@ -973,11 +1017,16 @@ document.getElementById('forgetBtn').addEventListener('click', () => {
 document.getElementById('syncBtn').addEventListener('click', syncFromSheet);
 document.getElementById('saveToSheetBtn').addEventListener('click', saveChangesToSheet);
 
-// Auto-reconnect on load if a connection was remembered on this device
-loadConfigFromStorage();
+// Auto-reconnect on load: hardcoded defaults take priority (works for every
+// visitor of the hosted link), otherwise fall back to a per-browser saved connection.
+if(DEFAULT_SHEET_URL){
+  CONFIG = {url: DEFAULT_SHEET_URL, key: DEFAULT_SHEET_KEY};
+}else{
+  loadConfigFromStorage();
+}
 if(CONFIG.url){
   document.getElementById('syncBtn').style.display = 'inline-flex';
-  document.getElementById('forgetBtn').style.display = 'inline-flex';
+  document.getElementById('forgetBtn').style.display = DEFAULT_SHEET_URL ? 'none' : 'inline-flex';
   syncFromSheet();
 }
 
