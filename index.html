@@ -200,6 +200,7 @@ footer{margin-top:1.5rem;text-align:center;color:var(--muted);font-size:11px}
       <div class="date-group">To <input type="date" id="dateTo"></div>
       <button class="btn btn-outline" id="resetDateBtn">Reset range</button>
       <button class="btn btn-outline spacer" id="targetsBtn">Set hiring targets</button>
+      <button class="btn btn-primary" id="saveSharedViewBtn">Save this view for everyone</button>
     </div>
     <div class="kpi-row" id="kpiRow"></div>
     <div class="funnel" id="funnelRow"></div>
@@ -521,6 +522,17 @@ function ingestSheetJson(json){
     STAGES[id] = toStr(r['Stage']) || 'New';
     NOTES[id] = toStr(r['Notes']);
   });
+
+  // Apply the shared "at a glance" view (date range + targets) saved by the team,
+  // so anyone opening this dashboard sees the same snapshot without setting it up.
+  if(json.settings){
+    if(json.settings.dateFrom) document.getElementById('dateFrom').value = json.settings.dateFrom;
+    if(json.settings.dateTo) document.getElementById('dateTo').value = json.settings.dateTo;
+    if(json.settings.targets && Object.keys(json.settings.targets).length){
+      TARGETS = json.settings.targets;
+      saveTargetsToStorage();
+    }
+  }
   render();
 }
 
@@ -564,6 +576,31 @@ async function saveChangesToSheet(){
     else{ alert('Error saving: ' + (json.error || 'unknown error')); }
   }catch(err){
     alert('Could not save to sheet. Details: ' + err.message);
+  }finally{
+    btn.textContent = originalText;
+  }
+}
+
+async function saveSharedView(){
+  if(!CONFIG.url){ alert('Connect to your Google Sheet first.'); return; }
+  const settings = {
+    dateFrom: document.getElementById('dateFrom').value,
+    dateTo: document.getElementById('dateTo').value,
+    targets: TARGETS
+  };
+  const btn = document.getElementById('saveSharedViewBtn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Saving...';
+  try{
+    const res = await fetch(CONFIG.url, {
+      method: 'POST',
+      body: JSON.stringify({key: CONFIG.key, settings: settings})
+    });
+    const json = await res.json();
+    if(json.success){ alert('Saved. Anyone who opens this dashboard will now see this date range and these targets automatically.'); }
+    else{ alert('Error: ' + (json.error || 'unknown error')); }
+  }catch(err){
+    alert('Could not save this as the shared view. Details: ' + err.message);
   }finally{
     btn.textContent = originalText;
   }
@@ -1028,6 +1065,7 @@ document.getElementById('forgetBtn').addEventListener('click', () => {
 
 document.getElementById('syncBtn').addEventListener('click', syncFromSheet);
 document.getElementById('saveToSheetBtn').addEventListener('click', saveChangesToSheet);
+document.getElementById('saveSharedViewBtn').addEventListener('click', saveSharedView);
 
 // Load remembered hiring targets (per-browser) before first render
 loadTargetsFromStorage();
