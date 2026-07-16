@@ -334,6 +334,17 @@ function loadConfigFromStorage(){
 function clearConfigFromStorage(){
   try{ localStorage.removeItem('tbsi_dashboard_config'); }catch(e){}
 }
+
+// Remembers hiring targets across visits (per-browser), same mechanism as above.
+function saveTargetsToStorage(){
+  try{ localStorage.setItem('tbsi_dashboard_targets', JSON.stringify(TARGETS)); }catch(e){}
+}
+function loadTargetsFromStorage(){
+  try{
+    const raw = localStorage.getItem('tbsi_dashboard_targets');
+    if(raw){ TARGETS = JSON.parse(raw); }
+  }catch(e){}
+}
 let dataSource = 'none'; // 'csv' or 'sheet'
 let charts = {};
 
@@ -980,6 +991,7 @@ document.getElementById('saveTargetsBtn').addEventListener('click', () => {
     if(val > 0) TARGETS[inp.dataset.position] = val;
     else delete TARGETS[inp.dataset.position];
   });
+  saveTargetsToStorage();
   document.getElementById('targetsModal').classList.remove('open');
   render();
 });
@@ -1016,6 +1028,9 @@ document.getElementById('forgetBtn').addEventListener('click', () => {
 
 document.getElementById('syncBtn').addEventListener('click', syncFromSheet);
 document.getElementById('saveToSheetBtn').addEventListener('click', saveChangesToSheet);
+
+// Load remembered hiring targets (per-browser) before first render
+loadTargetsFromStorage();
 
 // Auto-reconnect on load: hardcoded defaults take priority (works for every
 // visitor of the hosted link), otherwise fall back to a per-browser saved connection.
